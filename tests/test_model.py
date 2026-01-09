@@ -50,10 +50,9 @@ class TestModelLoading(unittest.TestCase):
         # Create a dummy input for the model based on expected input shape
         input_text = "hi how are you"
         input_data = self.vectorizer.transform([input_text])
-        input_df = pd.DataFrame(input_data.toarray(), columns=[str(i) for i in range(input_data.shape[1])])
-
-        # Predict using the new model to verify the input and output shapes
+        input_df = input_df.iloc[:, :40]
         prediction = self.new_model.predict(input_df)
+
 
         # Verify the input shape
         self.assertEqual(input_df.shape[1], len(self.vectorizer.get_feature_names_out()))
@@ -64,7 +63,9 @@ class TestModelLoading(unittest.TestCase):
 
     def test_model_performance(self):
         # Extract features and labels from holdout test data
-        X_holdout = self.holdout_data.iloc[:,0:-1]
+        X_holdout = X_holdout.iloc[:, :40]
+        y_pred_new = self.new_model.predict(X_holdout)
+
         y_holdout = self.holdout_data.iloc[:,-1]
 
         # Predict using the new model
