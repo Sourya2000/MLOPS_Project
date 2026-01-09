@@ -1,0 +1,89 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  project-testing:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run DVC pipeline
+        env:
+          CAPSTONE_TEST: ${{ secrets.CAPSTONE_TEST }}
+        run: |
+          dvc repro
+
+      - name: Run model tests
+        env:
+          CAPSTONE_TEST: ${{ secrets.CAPSTONE_TEST }}
+        run: |
+          python -m unittest tests/test_model.py
+
+      - name: Promote model to production
+        if: success()
+        env:
+          CAPSTONE_TEST: ${{ secrets.CAPSTONE_TEST }}
+        run: |
+          python scripts/promote_model.py
+
+      - name: Run Flask app tests
+        if: success()
+        env:
+          CAPSTONE_TEST: ${{ secrets.CAPSTONE_TEST }}
+        run: |
+          python -m unittest tests/test_flask_app.py
+
+      - name: Login to AWS ECR
+        if: success()
+        run: |
+          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws configure set region ${{ secrets.AWS_REGION }}
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} \
+            | docker login --username AWS --password-stdin \
+              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ secrets.ECR_REPOSITORY }}:latest .
+
+      - name: Tag Docker image
+        run: |
+          docker tag ${{ secrets.ECR_REPOSITORY }}:latest \
+            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
+
+      - name: Push Docker image to ECR
+        run: |
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region us-east-1 --name flas
