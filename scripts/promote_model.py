@@ -3,6 +3,7 @@
 import os
 import mlflow
 
+
 def promote_model():
     # Set up DagsHub credentials for MLflow tracking
     dagshub_token = os.getenv("CAPSTONE_TEST")
