@@ -49,7 +49,7 @@ class TestModelLoading(unittest.TestCase):
 
     def test_model_signature(self):
         input_df = pd.DataFrame({
-            "review": ["An excellent movie"]
+            "An excellent movie"
         })
 
         prediction = self.new_model.predict(input_df)
